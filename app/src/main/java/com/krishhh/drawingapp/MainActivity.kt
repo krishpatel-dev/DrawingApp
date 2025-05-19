@@ -29,8 +29,6 @@ class MainActivity : AppCompatActivity() {
 
                 if(isGranted){
                     Toast.makeText(this@MainActivity, "Permission granted, now you can read the storage files.", Toast.LENGTH_LONG).show()
-
-
                 } else {
                     if(permissionName == Manifest.permission.READ_MEDIA_IMAGES){
                         Toast.makeText(this@MainActivity, "Oops you just denied the permission", Toast.LENGTH_LONG).show()
