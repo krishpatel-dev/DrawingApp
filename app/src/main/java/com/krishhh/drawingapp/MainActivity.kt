@@ -39,6 +39,7 @@ class MainActivity : AppCompatActivity() {
     private var mImageButtonCurrentPaint: ImageButton? = null
     var customProgressDialog : Dialog? = null
     private var lastSavedFilePath: String? = null
+    private var isPermissionForSaving = false
 
     val openGalleryLauncher: ActivityResultLauncher<Intent> = registerForActivityResult(ActivityResultContracts.StartActivityForResult()){
         result ->
@@ -50,25 +51,32 @@ class MainActivity : AppCompatActivity() {
     }
 
     val requestPermission: ActivityResultLauncher<Array<String>> =
-        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()){
-            permissions ->
-            permissions.entries.forEach{
-                val permissionName = it.key
-                val isGranted = it.value
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { permissions ->
+            permissions.entries.forEach { entry ->
+                val permissionName = entry.key
+                val isGranted = entry.value
 
-                if(isGranted){
-                    Toast.makeText(this@MainActivity, "Permission granted, now you can read the storage files.", Toast.LENGTH_LONG).show()
+                if (isGranted) {
+                    Toast.makeText(this@MainActivity, "Permission granted", Toast.LENGTH_SHORT).show()
 
-                    val pickIntent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
-                    openGalleryLauncher.launch(pickIntent)
+                    if (isPermissionForSaving) {
+                        // ✅ User will click Save again
+                    } else {
+                        // ✅ This is for opening gallery
+                        val pickIntent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI)
+                        openGalleryLauncher.launch(pickIntent)
+                    }
 
+                    // Reset the flag
+                    isPermissionForSaving = false
                 } else {
-                    if(permissionName == Manifest.permission.READ_MEDIA_IMAGES){
-                        Toast.makeText(this@MainActivity, "Oops you just denied the permission", Toast.LENGTH_LONG).show()
+                    if (permissionName == Manifest.permission.READ_MEDIA_IMAGES) {
+                        Toast.makeText(this@MainActivity, "Oops! Permission denied", Toast.LENGTH_LONG).show()
                     }
                 }
             }
         }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,6 +99,7 @@ class MainActivity : AppCompatActivity() {
 
         val ibGallery : ImageButton = findViewById(R.id.ib_gallery)
         ibGallery.setOnClickListener {
+            isPermissionForSaving = false  // ✅ Mark it for gallery access
             requestStoragePermission()
         }
 
@@ -125,6 +134,9 @@ class MainActivity : AppCompatActivity() {
                     val result = saveBitmapFile(getBitmapFromView(flDrawingView))
                     lastSavedFilePath = result  // ✅ THIS LINE FIXES YOUR ISSUE
                 }
+            } else {
+                isPermissionForSaving = true  // ✅ Track that it's for saving, not gallery
+                requestStoragePermission()  // ✅ Request permission if not granted
             }
         }
 
