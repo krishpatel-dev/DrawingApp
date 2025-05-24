@@ -3,12 +3,14 @@ package com.krishhh.drawingapp
 import android.Manifest
 import android.app.AlertDialog
 import android.app.Dialog
+import android.content.ContentValues
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.media.MediaScannerConnection
+import android.net.Uri
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.provider.MediaStore
@@ -102,14 +104,26 @@ class MainActivity : AppCompatActivity() {
             drawingView?.onClickRedo()
         }
 
+//        val ibSave : ImageButton = findViewById((R.id.ib_save))
+//        ibSave.setOnClickListener {
+//            if(isReadStorageAllowed()){
+//                showProgressDialog()
+//                lifecycleScope.launch {
+//                    val flDrawingView: FrameLayout = findViewById((R.id.fl_drawing_view_container))
+//                    // val myBitmap: Bitmap = getBitmapFromView(flDrawingView)
+//                    saveBitmapFile(getBitmapFromView(flDrawingView))
+//                }
+//            }
+//        }
+
         val ibSave : ImageButton = findViewById((R.id.ib_save))
         ibSave.setOnClickListener {
             if(isReadStorageAllowed()){
                 showProgressDialog()
                 lifecycleScope.launch {
                     val flDrawingView: FrameLayout = findViewById((R.id.fl_drawing_view_container))
-                    // val myBitmap: Bitmap = getBitmapFromView(flDrawingView)
-                    saveBitmapFile(getBitmapFromView(flDrawingView))
+                    val result = saveBitmapFile(getBitmapFromView(flDrawingView))
+                    lastSavedFilePath = result  // ✅ THIS LINE FIXES YOUR ISSUE
                 }
             }
         }
@@ -219,40 +233,104 @@ class MainActivity : AppCompatActivity() {
         return returnedBitmap
     }
 
-    private suspend fun saveBitmapFile(mBitmap: Bitmap?): String{
-        var result = ""
-        withContext(Dispatchers.IO){
-            if(mBitmap != null){
+//    private suspend fun saveBitmapFile(mBitmap: Bitmap?): String{
+//        var result = ""
+//        withContext(Dispatchers.IO){
+//            if(mBitmap != null){
+//                try {
+//                    val bytes = ByteArrayOutputStream()
+//                    mBitmap.compress(Bitmap.CompressFormat.PNG, 90, bytes)
+//
+//                    val f = File(externalCacheDir?.absoluteFile.toString() + File.separator + "KidsDrawingApp_" + System.currentTimeMillis() / 1000 + ".png")
+//
+//                    val fo = FileOutputStream(f)
+//                    fo.write(bytes.toByteArray())
+//                    fo.close()
+//
+//                    result = f.absolutePath
+//
+//                    runOnUiThread{
+//                        cancelProgressDialog()
+//                        if(result.isNotEmpty()){
+//                            Toast.makeText(this@MainActivity, "File saved successfully: $result", Toast.LENGTH_SHORT).show()
+//                        } else {
+//                            Toast.makeText(this@MainActivity, "Something went wrong while saving the file.", Toast.LENGTH_SHORT).show()
+//                        }
+//                    }
+//                }
+//                catch (e: Exception) {
+//                    result = ""
+//                    e.printStackTrace()
+//                }
+//            }
+//        }
+//        lastSavedFilePath = result
+//        return result
+//    }
+
+    private suspend fun saveBitmapFile(mBitmap: Bitmap?): String {
+        var savedImagePath = ""
+
+        withContext(Dispatchers.IO) {
+            if (mBitmap != null) {
                 try {
-                    val bytes = ByteArrayOutputStream()
-                    mBitmap.compress(Bitmap.CompressFormat.PNG, 90, bytes)
+                    // Step 1: Set up the metadata (file name, MIME type, path)
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.Images.Media.DISPLAY_NAME, "KidsDrawingApp_${System.currentTimeMillis() / 1000}.png")
+                        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/KidsDrawingApp") // Saves in Pictures/KidsDrawingApp folder
+                    }
 
-                    val f = File(externalCacheDir?.absoluteFile.toString() + File.separator + "KidsDrawingApp_" + System.currentTimeMillis() / 1000 + ".png")
+                    // Step 2: Get a URI where the image will be saved using MediaStore
+                    val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
 
-                    val fo = FileOutputStream(f)
-                    fo.write(bytes.toByteArray())
-                    fo.close()
+                    // Step 3: If URI is valid, get OutputStream and write the bitmap to it
+                    if (uri != null) {
+                        contentResolver.openOutputStream(uri)?.use { outputStream ->
+                            mBitmap.compress(Bitmap.CompressFormat.PNG, 100, outputStream)
+                        }
 
-                    result = f.absolutePath
+                        savedImagePath = uri.toString() // Store the image path as a string
 
-                    runOnUiThread{
-                        cancelProgressDialog()
-                        if(result.isNotEmpty()){
-                            Toast.makeText(this@MainActivity, "File saved successfully: $result", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Toast.makeText(this@MainActivity, "Something went wrong while saving the file.", Toast.LENGTH_SHORT).show()
+                        // Step 4: Notify the user on the UI thread
+                        runOnUiThread {
+                            cancelProgressDialog()
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Image saved successfully",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    } else {
+                        // Handle case where image URI could not be created
+                        runOnUiThread {
+                            cancelProgressDialog()
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Failed to create image Uri",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     }
-                }
-                catch (e: Exception) {
-                    result = ""
+
+                } catch (e: Exception) {
                     e.printStackTrace()
+                    savedImagePath = ""
+                    runOnUiThread {
+                        cancelProgressDialog()
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Something went wrong while saving the image",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 }
             }
         }
-        lastSavedFilePath = result
-        return result
+
+        return savedImagePath
     }
+
 
     // Method is used to show the custom progress dialog
     private fun showProgressDialog() {
@@ -273,15 +351,26 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun shareImage(result: String){
-        MediaScannerConnection.scanFile(this, arrayOf(result), null){
-            path, uri ->
-            val shareIntent =  Intent()
-            shareIntent.action = Intent.ACTION_SEND
-            shareIntent.putExtra(Intent.EXTRA_STREAM, uri)
-            shareIntent.type = "image/png"
-            startActivity(Intent.createChooser(shareIntent, "Share"))
+//    private fun shareImage(result: String){
+//        MediaScannerConnection.scanFile(this, arrayOf(result), null){
+//            path, uri ->
+//            val shareIntent =  Intent()
+//            shareIntent.action = Intent.ACTION_SEND
+//            shareIntent.putExtra(Intent.EXTRA_STREAM, uri)
+//            shareIntent.type = "image/png"
+//            startActivity(Intent.createChooser(shareIntent, "Share"))
+//        }
+//    }
+
+    private fun shareImage(uriString: String) {
+        val uri = Uri.parse(uriString)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
+        startActivity(Intent.createChooser(shareIntent, "Share"))
     }
+
 
 }
